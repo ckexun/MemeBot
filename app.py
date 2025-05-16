@@ -14,10 +14,9 @@ config.read("config.ini")
 LINE_CHANNEL_ACCESS_TOKEN = config['LINE']['CHANNEL_ACCESS_TOKEN']
 LINE_CHANNEL_SECRET = config['LINE']['CHANNEL_SECRET']
 GEMINI_API_KEY = config['GEMINI']['API_KEY']
-CWB_API_KEY = config['WEATHER']['CWB_API_KEY']  # 中央氣象局 API 金鑰
+CWB_API_KEY = config['WEATHER']['CWB_API_KEY']
 PORT = int(config['SERVER']['PORT'])
 
-# === 初始化 LINE 與 Gemini ===
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 llm = ChatGoogleGenerativeAI(
@@ -26,11 +25,8 @@ llm = ChatGoogleGenerativeAI(
 )
 
 app = Flask(__name__)
-
-# === 歷史訊息儲存結構 ===
 conversation_history = {}
 
-# === Gemini 回覆函數 ===
 def gemini_generate_response(prompt):
     try:
         messages = [
@@ -43,7 +39,6 @@ def gemini_generate_response(prompt):
         print(f"Gemini 發生錯誤：{e}")
         return "AI 回應失敗，請稍後再試～"
 
-# === 儲存對話紀錄 ===
 def save_history(user_id, user_msg, bot_msg):
     if user_id not in conversation_history:
         conversation_history[user_id] = []
@@ -53,19 +48,21 @@ def save_history(user_id, user_msg, bot_msg):
         "bot": bot_msg
     })
 
-# === RESTful API 查詢與刪除歷史對話 ===
-@app.route("/history/<user_id>", methods=["GET"])
-def get_history(user_id):
-    return jsonify(conversation_history.get(user_id, []))
+@app.route("/history", methods=["GET"])
+def get_all_history():
+    all_records = []
+    for uid, history in conversation_history.items():
+        for entry in history:
+            entry_with_user = entry.copy()
+            entry_with_user["user_id"] = uid
+            all_records.append(entry_with_user)
+    return jsonify(all_records)
 
-@app.route("/history/<user_id>", methods=["DELETE"])
-def delete_history(user_id):
-    if user_id in conversation_history:
-        del conversation_history[user_id]
-        return jsonify({"message": f"User {user_id} history deleted."})
-    return jsonify({"message": "No history found."})
+@app.route("/history", methods=["DELETE"])
+def delete_all_history():
+    conversation_history.clear()
+    return jsonify({"message": "All conversation history deleted."})
 
-# === CWB 天氣查詢 ===
 def get_cwb_weather(city="臺北市"):
     url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001"
     params = {
@@ -86,7 +83,6 @@ def get_cwb_weather(city="臺北市"):
         print(f"CWB API 錯誤：{e}")
         return "中央氣象局天氣查詢失敗，請稍後再試。"
 
-# === 台灣地理位置反查城市 ===
 def get_city_from_coords(lat, lon):
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&accept-language=zh-TW"
@@ -98,7 +94,6 @@ def get_city_from_coords(lat, lon):
         print(f"地理反查錯誤：{e}")
         return "臺北市"
 
-# === webhook 路由 ===
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
@@ -109,12 +104,10 @@ def callback():
         abort(400)
     return 'OK'
 
-# === 處理文字訊息 ===
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text(event):
     user_text = event.message.text.strip()
     user_id = event.source.user_id
-    messages = []
 
     if user_text.lower() in ["貼圖", "sticker"]:
         media_message = StickerSendMessage(package_id='11537', sticker_id='52002740')
@@ -122,7 +115,6 @@ def handle_text(event):
         reply_text = gemini_generate_response(prompt)
         save_history(user_id, user_text, reply_text)
         line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=reply_text), media_message])
-        return
     elif user_text.lower() in ["圖片", "image"]:
         media_message = ImageSendMessage(
             original_content_url='https://en.meming.world/images/en/6/6e/Surprised_Pikachu.jpg',
@@ -132,7 +124,6 @@ def handle_text(event):
         reply_text = gemini_generate_response(prompt)
         save_history(user_id, user_text, reply_text)
         line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=reply_text), media_message])
-        return
     elif user_text.lower() in ["影片", "video"]:
         media_message = VideoSendMessage(
             original_content_url='https://ckexun.github.io/MemeBot/material/videoplayback.mp4',
@@ -142,13 +133,11 @@ def handle_text(event):
         reply_text = gemini_generate_response(prompt)
         save_history(user_id, user_text, reply_text)
         line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=reply_text), media_message])
-        return
     elif user_text.lower().startswith("天氣"):
         city = user_text.replace("天氣", "").strip() or "臺北市"
         reply_text = get_cwb_weather(city)
         save_history(user_id, user_text, reply_text)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-        return
     elif user_text in ["地址", "位置", "location"]:
         media_message = LocationSendMessage(
             title="台北 101",
@@ -160,13 +149,11 @@ def handle_text(event):
         reply_text = gemini_generate_response(prompt)
         save_history(user_id, user_text, reply_text)
         line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=reply_text), media_message])
-        return
     else:
         reply_text = gemini_generate_response(f"使用者說：「{user_text}」，請自然回覆。")
         save_history(user_id, user_text, reply_text)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
-# === 處理多媒體訊息 ===
 @handler.add(MessageEvent, message=(ImageMessage, VideoMessage, StickerMessage, LocationMessage))
 def handle_media(event):
     msg = event.message
