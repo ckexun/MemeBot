@@ -1,5 +1,6 @@
 # PikaBot
 >Update time: 2025-05-16
+
 LINE ID: @223myfde
 
 ---
@@ -38,8 +39,8 @@ CWB_API_KEY = <Your CWB (Central Weather Bureau) API Key>
 Make sure to replace all placeholder values (`<...>`) with your actual credentials before running the application.
 
 ## Flowerchart
-<img src="PikaBot/material/Bot%flower.png" width="400"/>
-<img src="PikaBot/material/Postman%flower.png" width="400"/>
+<img src="material/Bot%20flower.png" width="400"/>
+<img src="material/Postman%20flower.png" width="400"/>
 
 
 
